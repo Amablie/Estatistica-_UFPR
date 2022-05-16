@@ -1,0 +1,600 @@
+---
+title: "Projeto Integrador - Livros de Data Science e Estatística da Amazon"
+author: 
+- Amábile Galdino Leandro 
+- Eduardo Lopes Cock
+date: "24/03/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Link da apresentação
+
+https://www.youtube.com/watch?v=cmrgKopIG64
+
+
+## Introdução
+
+Devido ao nosso interesse por literatura e livros no geral e ao fato de que ambos os integrantes da dupla estão matriculados na graduação em Estatística da UFPR, nós optamos por juntar os dois argumento e coletar dados sobre livros relacionados a estatística e ciência de dados. Definido o assunto, nosso objetivo é analisar quais fatores interferem no preço dos livros em questão.
+Antes da análise foram estabelecidas algumas hipóteses sobre o assunto:
+
+ - Livros de capa dura tendem a ser mais caros, devido a necessidade de mais material para a impressão e por serem usado com mais frequência em edições especiais;
+
+ - Livros importados tendem a ser mais caros, devido a dependência do preço do dolar ;
+
+ - Livros com mais páginas também apresentam preço mais elevado, devivo a necessidade de mais material(folhas de papel) para a impressão.
+ 
+
+## Materiais e métodos
+
+### Coleta dos dados
+
+Os dados analisados foram extraídos do site Amazon.com.br no dia 07/03/2021 com informações sobre livros relacionados a Data Science e Estatística. Esta coleta foi feita utilizando Web Scraping com o auxílio do *software*  Octoparse 8. Após a coleta dos dados, foi realizada uma pré-limpeza com o objetivo de retirar os livros presentes na base que não tinham relação com o tema. Feito isso, sobraram ao todo 461 observações e 11 variáveis. As variáveis são:
+
+- **Titulo**: Título do livro
+- **Preco**: Preço do livro
+- **TipoLivro**: Material da capa do livro (brochura ou capa dura)
+- **Avaliacao**: Avaliação que os compradores deram ao livro
+- **nAvaliacao**: Número de avaliações que o livro teve no site da Amazon
+- **Paginas**: O número de páginas do livro
+- **Idioma**: Idioma no qual o livro está sendo vendido
+- **Editora**: Editora na qual o livro foi publicado
+- **Dimensao**: Largura, altura e espessura do livro
+- **Data**: Data de publicação do livro
+- **Dias**: Dias desde a publicação até o dia da extração da base (07.03.2021)
+
+
+### Modelagem estatística
+
+A primeira coisa feita neste trabalho foi a análise exploratória dos dados, para uma maior compreensão da base antes da construção do modelo. Para a etapa de análise exploratória foi usado os pacotes Tidyverse e DataExplorer.
+
+Para o modelo múltiplo aditivo, primeiro realizamos o ajuste, seguido por uma análise de diagnóstico com gráficos de resíduos, transformação dos dados usando Box-Cox e seleção do modelo utilizando o coeficiente de determinação ajustado.
+
+Para o ajuste do modelo foi utilizado a função ``lm()``, na análise de diagnóstico serão utilizados os gráficos para análise de resíduos e as funções ``influencePlot()``, ``qqPlot()``, ``rstandard()`` e ``plot()``, para a transformação das variáveis será utilizado o método de Box-Cox e como critério de qualidade do ajuste será considerado o coeficiente de determinação ajustado.
+
+
+
+## Resultados e discussões
+
+### Análise Exploratória
+
+Antes da realização da análise exploratória dos dados, realizamos o tratamento do nosso conjunto de dados. Nesta etapa foram retiradas 3 variáveis (Dimensão, Data, Editora) que não seriam proveitosas para a nossa análise devido a estrutura dos dados, além disso também realizamos a retirada de todas as linhas que contem NA.
+
+#### Carregamento e tratamentos
+````{r base, warning = FALSE, message = FALSE}
+library(tidyverse)
+library(DataExplorer)
+library(corrplot)
+library(MASS)
+library(car)
+library(readr)
+
+base <- read.csv("C:/Users/Amábile/Documents/Estatística/Regressão Linear/PI/Amazon.csv", header = TRUE, sep = ",", dec = ".")
+base <-subset(base, select = -c(Dimensao, Data, Editora))## excluindo colunas que não serâo usadas
+str(base)
+summary(base)## medidas resumo
+
+
+### retirada dos NA do conjunto de dados
+dados<- na.omit(base)
+summary(dados)
+
+
+````
+
+
+
+#### Numéricas
+A princípio realizaremos uma análise com o objetivo de conhecer e identificar as principais características do nosso conjunto de dados. Primeiramente iniciaremos a nossa análise com as variáveis numéricas.
+
+
+````{r echo = TRUE, message = FALSE}
+### apenas numericas
+dados_num <- subset(dados, select = -c(TipoLivro, Idioma, Titulo))
+### dispersão em relação ao preço
+tb2 <- dados_num %>%
+  gather(key = "variable", value = "value", -Preco)
+
+#### comportamento do conjunto de dados
+ggplot(data = tb2,
+       mapping = aes(x = value, y = Preco)) +
+  facet_wrap(facets = ~variable, scale = "free_x") +
+  scale_y_log10() +
+  geom_point() 
+````
+
+Nesta visualização trazemos a dispersão dos dados em relação a nossa variável resposta *Preco*. Já neste gráfico conseguimos observar algumas características interessantes a respeito dos nossos dados.
+
+Tanto *Dias* quanto *nAvaliacao* possuem algumas observações muito distantes dos demais dados observados, sendo possíveis outliers que venham a interferir no modelo. 
+
+Outro ponto a ser observado é a relação entre Avaliação e Preço, apenas com o gráfico de dispersão é difícil identificar qual o comportamento no conjunto de dados. 
+
+Por outro lado, variáveis *Paginas* é a que apresenta um comportamento razoável, apesar de ser possível observar alguns pontos distantes dos demais dados, isso não parece interferir na visualização.
+
+Em busca de uma maior compreensão sobre os nossos dados, vamos plotar os gráficos com a reta ajustada:
+
+````{r echo = TRUE, message = FALSE}
+#### ajuste da reta para cada uma das variáveis
+ggplot(data = tb2,
+       mapping = aes(x = value, y = Preco)) +
+  facet_wrap(facets = ~variable, scale = "free_x") +
+  scale_y_log10() +
+  geom_point() +
+  geom_smooth(method = "lm")
+
+````
+
+Com a plotagem realmente fica evidente que os outliers estão interferindo no ajuste da reta dos gráficos de número de *Avaliacao* e *Dias*, além disso vale mencionar que devido aos dados estarem muito concentrados próximo ao eixo y, isso também dificulta a observação da disperção.
+
+Em relação a *Avaliacao*, podemos observar que a inclinação na reta ajustada é pouco significativa, isso demonstra que talvez as avaliações não venham realmente a interferir no preço.
+
+##### Tranformação
+
+Para tentar visualizar os dados com mais precisão, optamos por uma transformação para raiz cúbica.
+
+````{r echo = TRUE, message = FALSE, warning = FALSE}
+##Transformação
+transtb2 <- tb2 %>% 
+  mutate(value = value^(1/3)) %>% 
+  mutate(Preco = Preco^(1/3))
+
+
+ggplot(data = transtb2,
+       mapping = aes(x = value, y = Preco)) +
+  facet_wrap(facets = ~variable, scale = "free_x") +
+  scale_y_log10() +
+  geom_point() +
+  geom_smooth(method = "lm")
+
+````
+
+
+A partir da transformação em *nAvaliacao* podemos identificar com mais clareza um comportamento linear negativo quando traçada a reta. Apesar de ainda ser possível identificar os outliers, a discrepância entre os demais pontos reduziu após a mudança de escala.
+
+
+Analisando a variável *Paginas* observamos um comportamento crescente do nosso conjunto de dados antes mesmo da transformação. Quando mudamos a escala do gráfico a reta fica melhor ajustada, sendo possível observar uma otimização no cruzamento da reta.
+
+Na variável *Dias*, após a transformação é possível enxergar o comportamento dos dados com mais clareza, já que as observações deixam de apresentar uma concentração próxima ao eixo y. Porém mesmo após a transformação vemos que o ajuste da reta é muita semelhante a uma constante, indicando que possívelmente essa variável não interfira significativamente no preço do livro.
+
+Algo semelhante é visto na variável *Avaliacao*, mesmo após a transformação os dados se assemelham ao que eram antes da mudança de escala e como na variável *Dias* a reta apresenta uma leve inclinação, sendo possível concluir que talvez a avaliação não interfira no preço do livro.
+
+
+
+#### Categóricas
+
+Além das variáveis numéricas, as variáveis categórias também podem ser importantes para o ajuste do nosso modelo. Aqui faremos uma breve análise sobre as variáveis categóricas que pretendemos usar no modelo.
+
+##### Tipo de Livro
+
+Começaremos com a variável *TipoLivro* que está categorizada em dois níveis, são eles: Capa Dura e Capa Comum. 
+
+
+
+````{r echo = TRUE}
+cate.livro<- table(dados$TipoLivro)
+
+barplot(cate.livro,
+        xlab = "Tipo de livro",
+        ylab = "Frequência absoluta",
+        col = c("purple", "blue"))
+
+````
+
+No gráfico acima é possível observar que o nível "Capa Comum" é  mais frequente no nosso conjunto de dados que  "Capa dura".
+
+
+````{r echo = TRUE}
+boxplot(Preco ~ TipoLivro, data = dados)
+
+````
+
+
+Plotando o gráfico de boxplot, podemos observar que livros de "Capa Dura" no nosso conjunto de dados tendem a possuir um preço mais elevado comparado aos livros de "Capa Comum". Sendo assim é possível que a variável *TipoLivro* possua relevância na construição do modelo.
+
+
+````{r echo = TRUE,  message= FALSE}
+ggplot(data = dados,
+       mapping = aes(x = Paginas, y = Preco, color = TipoLivro)) +
+  facet_wrap(facets = ~TipoLivro, nrow = 3)+
+  geom_point()+
+  geom_smooth(method = "lm")
+
+
+````
+
+Neste gráfico optamos por visualizar o ajuste da reta separadamente para cada conjunto de dados.
+Talvez por possuir um maior número de observações, é visível que o ajuste da reta para "Capa Comum" demonstra melhor o comportamento dos dados. Enquanto para "Capa Dura", os pontos apresentam maior dispersão em torno da reta ajustada.
+
+
+
+
+##### Idioma
+
+Agora passando para a análise da variável *Idioma*, serão analisados os níveis "Ingles" e "Portugues" presentes na base pós-tratamento dos dados.
+
+````{r echo = TRUE}
+cate.idioma<- table(dados$Idioma)
+
+barplot(cate.idioma,
+        xlab = "Idioma",
+        ylab = "Frequência absoluta",
+        col = c("pink", "green"))
+
+````
+
+
+Assim como em *TipoLivro*, primeiro analisamos a frequência de livros em inglês e português no nosso conjunto de dados. Aqui podemos observar que os livros em Inglês estão em maior quantidade na nossa base do que os em Português. Provavelmente relacionado ao fato de uma maior disponibilidade de materiais em língua inglesa sobre Ciência de Dados e Estatística.
+
+````{r echo = TRUE}
+boxplot(Preco ~ Idioma, data = dados)
+
+````
+
+
+Analisando o gráfico de boxplot, podemos observar que o preço de livros em inglês é maior do que o de livros em português, sendo uma informação relevante para a construção do modelo.
+
+
+
+````{r echo = TRUE, message = FALSE}
+## ajuste da reta com o livro separadamente
+ggplot(data = dados,
+       mapping = aes(x = Paginas, y = Preco, color = Idioma)) +
+  facet_wrap(facets = ~Idioma, nrow = 3)+
+  geom_point()+
+  geom_smooth(method = "lm")
+
+````
+Para encerrar a etapa de análise das variáveis categóricas, podemos observar o ajuste da reta para cada um dos idiomas presentes na nossa base. Aparentemente ambos os npiveis apresentam um bom ajuste para a s observações
+
+##### Correlação
+
+Por último construímos uma matriz com o objetivo de analisar a correlação entre as variáveis.
+
+````{r echo = TRUE}
+dadosdummy<- subset(dados, select = -c(Titulo))
+du.dados<-dummify(dadosdummy)
+cor.bados<-cor(du.dados)
+
+plot_correlation(cor.bados)
+
+````
+
+
+Aqui podemos observar que as variáveis categóricas *Idioma* e *TipoLivro*, possuem maior correlação com a nossa variável resposta *Preco*, assim como a variável preditora numérica *Paginas*. Todas elas possuem correlação superior a 0.60 sendo positivo ou negativo.
+
+
+
+### Ajuste do modelo
+
+
+```{r opcoes, include = FALSE}
+options(scipen=999)
+```
+
+Feita a análise exploratória, podemos realizar  o ajuste do modelo.
+  
+```{r modelo m0}
+### Modelo m0
+dados0 <- filter(dados, Preco > 0)
+m0 <- lm(Preco ~ Avaliacao + Dias + nAvaliacao + Paginas + Idioma + TipoLivro, data = dados0)
+summary(m0)
+```
+
+O modelo m0 considera a adição das seis variáveis preditoras para estimar o preço dos livros, com 4 variáveis numéricas e 2 categóricas como visto na análise exploratória. 
+
+Sendo o $H_0 = 0$, observa-se que apenas as variáveis *Avaliacao* e *Dias* apresentam p-valor acima do nível de significância 0,05. Ou seja, não rejeita-se $H_0$ logo as variáveis não possuem significância estatística para a explicação do modelo.
+
+
+```{r echo = FALSE}
+### Análise diagnóstico
+# Graficos
+par(mfrow = c(2, 2))
+plot(m0)
+layout(1)
+```
+
+Apesar do resíduo estar em torno de 0, percebe-se que a variabilidade aumenta para os valores das estimativas que são maiores. Além dessa questão da variabilidade, observa-se um problema quanto a normalidade dos resíduos que, para este modelo, apresenta caudas pesadas.  
+  
+  
+```{r}
+# Medidas de influencia
+influencePlot(m0)
+# qqnorm com envelope.
+```  
+  
+  
+A função ``influencePlot()`` detecta observações problemáticas com base em três medidas, são elas: *StudRes* (Resíduo Studentizado), *Hat* (y chapéu) e *CookD* (Distância de Cook).  
+  
+  
+````{r}
+qqPlot(m0) 
+
+# Resíduo padronizado
+plot(rstandard(m0),
+     xlab = "Ordem das observações",
+     ylab = "Resíduo padronizado")
+abline(h = c(-3, 3), col = "red", lty = 2)
+abline(h = 0, col = "red", lty = 1)
+```  
+  
+Para tentar entender a questão da normalidade do modelo m0 foram utilizadas as funções ``qqPlot()`` e ``rstandard()``, o critério para selecionar observações problemáticas foi não pertencer ao intervalo [-3,3].   
+  
+Desse modo, as observações 18, 59, 190, 247, 285, 306 e 346 foram analisadas quanto a normalidade e optou-se por removê-las.  
+  
+  
+```{r modelo m1}
+### Modelo m1
+dados1 <- filter(dados0[-c(18, 59, 190, 247, 285, 306, 346),], Preco > 0)
+m1 <- lm(Preco ~ Avaliacao + Dias + nAvaliacao + Paginas + Idioma + TipoLivro, data = dados1)
+summary(m1)
+```  
+  
+Após a exclusão de algumas observações o coeficientes de determinação do modelo m1 aumentou quando comparado ao modelo m0. As variáveis com p-valor acima de 0,05 permaneceram as mesmas.  
+  
+  
+````{r}
+### Análise diagnóstico
+# Graficos
+par(mfrow = c(2, 2))
+plot(m1)
+layout(1)
+````
+
+A normalidade dos resíduos também é um problema para o modelo m1. O critério para a seleção permaneceu o mesmo e as observações 32, 91 e 95 foram analisadas.  
+  
+  
+````{r}
+# Medidas de influencia
+influencePlot(m1)
+# qqnorm com envelope.
+qqPlot(m1) 
+# Resíduo padronizado
+plot(rstandard(m1),
+     xlab = "Ordem das observações",
+     ylab = "Resíduo padronizado")
+abline(h = c(-3, 3), col = "red", lty = 2)
+abline(h = 0, col = "red", lty = 1)
+```  
+  
+Feita a análise das observações que apresentaram problemas quanto a normalidade, foi construído o modelo m2 que não considera a presença destas observações.  
+  
+  
+  
+```{r modelo m2}
+### Modelo m2
+dados2 <- filter(dados1[-c(32, 91, 95),], Preco > 0)
+m2 <- lm(Preco ~ Avaliacao + Dias + nAvaliacao + Paginas + Idioma + TipoLivro, data = dados2)
+summary(m2)
+### Análise diagnóstico
+# Graficos
+par(mfrow = c(2, 2))
+plot(m2)
+layout(1)
+# Medidas de influencia
+influencePlot(m2)
+# qqnorm com envelope.
+qqPlot(m2) 
+# Resíduo padronizado
+plot(rstandard(m2),
+     xlab = "Ordem das observações",
+     ylab = "Resíduo padronizado")
+abline(h = c(-3, 3), col = "red", lty = 2)
+abline(h = 0, col = "red", lty = 1)
+```  
+  
+Em m2 os resíduos tiveram um melhor ajuste quanto a normalidade, porém algumas observações ainda não atendem ao critério de terem o resíduo padronizado no intervalo [-3,3].   
+Foram identificados problemas nas observações 23, 225, 320.  
+  
+  
+```{r modelo m3}
+### Modelo m3
+dados3 <- filter(dados2[-c(23, 225, 320),], Preco > 0)
+m3 <- lm(Preco ~ Avaliacao + Dias + nAvaliacao + Paginas + Idioma + TipoLivro, data = dados3)
+summary(m3)
+```  
+  
+  
+Assim como nos modelos anteriores, e com base no teste t, as variáveis *Avaliacao* e *Dias* são as menos significativas para a predição do preço dos livros.  
+  
+```{r diagnostico m3}
+### Análise diagnóstico
+# Graficos
+par(mfrow = c(2, 2))
+plot(m3)
+layout(1)
+# Medidas de influencia
+influencePlot(m3)
+# qqnorm com envelope.
+qqPlot(m3) 
+# Resíduo padronizado
+plot(rstandard(m3),
+     xlab = "Ordem das observações",
+     ylab = "Resíduo padronizado")
+abline(h = c(-3, 3), col = "red", lty = 2)
+abline(h = 0, col = "red", lty = 1)
+```  
+  
+  
+O modelo m3 apresenta resultados semelhantes aos de m2.  
+Em m3 as observações 71 e 127 são analisadas por apresentarem problemas, a primeira por questão de alavancagem e a segunda por normalidade.  
+  
+  
+```{r modelo m4}
+### Modelo m4
+dados4 <- filter(dados3[-c(71,127),], Preco > 0)
+m4 <- lm(Preco ~ Avaliacao + Dias + nAvaliacao + Paginas + Idioma + TipoLivro, data = dados4)
+summary(m4)
+### Análise diagnóstico
+# Graficos
+par(mfrow = c(2, 2))
+plot(m4)
+layout(1)
+# Medidas de influencia
+influencePlot(m4)
+# qqnorm com envelope.
+qqPlot(m4) 
+# Resíduo padronizado
+plot(rstandard(m4),
+     xlab = "Ordem das observações",
+     ylab = "Resíduo padronizado")
+abline(h = c(-3, 3), col = "red", lty = 2)
+abline(h = 0, col = "red", lty = 1)
+```  
+  
+  
+O modelo m4 tem um ajuste melhor, porém ainda há alguns problemas de normalidade e alavancagem nas observações, são elas: 6, 115 e 255.  
+  
+  
+```{r modelo m5}
+### Modelo m5
+dados5 <- filter(dados4[-c(6, 115, 255),], Preco > 0)
+m5 <- lm(Preco ~ Avaliacao + Dias + nAvaliacao + Paginas + Idioma + TipoLivro, data = dados5)
+summary(m5)
+```  
+  
+Após a remoção de algumas observações problemáticas, o modelo m5 contém 6 variáveis e 334 observações.  
+  
+  
+
+```{r diagnostico m5}
+### Análise diagnóstico
+# Graficos
+par(mfrow = c(2, 2))
+plot(m5)
+layout(1)
+# Medidas de influencia
+influencePlot(m5)
+# qqnorm com envelope.
+qqPlot(m5) 
+# Resíduo padronizado
+plot(rstandard(m5),
+     xlab = "Ordem das observações",
+     ylab = "Resíduo padronizado")
+abline(h = c(-3, 3), col = "red", lty = 2)
+abline(h = 0, col = "red", lty = 1)
+```  
+  
+  
+No modelo m5 todas as observações atendem ao critério de normalidade, a distribuição da variância dos resíduos é mais próxima a uma constante e não há problemas significativos com alavancagem.  
+O próximo passo é fazer a melhor transformação das variáveis considerando três modelos, são eles: o modelo com seis variáveis preditoras, o modelo com cinco variáveis preditoras e o modelo com quatro variáveis preditoras.
+  
+  
+```{r transformação das variáveis}
+### Modelos
+m6p <- lm(Preco ~ Avaliacao + Dias + nAvaliacao + Paginas + Idioma + TipoLivro, data = dados5)
+summary(m6p)
+m5p <- lm(Preco ~ Dias + nAvaliacao + Paginas + Idioma + TipoLivro, data = dados5)
+summary(m5p)
+m4p <- lm(Preco ~ nAvaliacao + Paginas + Idioma + TipoLivro, data = dados5)
+summary(m4p)
+### Transformação
+# 6 preditoras
+MASS::boxcox(m6p)
+abline(v = 1/3, col = 2)
+m6_t <- update(m6p, . ^ (1/3) ~ .)
+summary(m6_t) 
+# 5 preditoras
+MASS::boxcox(m5p)
+abline(v = 1/3, col = 2)
+m5_t <- update(m5p, . ^ (1/3) ~ .)
+summary(m5_t)
+# 4 preditoras
+MASS::boxcox(m4p)
+abline(v = 1/3, col = 2)
+m4_t <- update(m4p, . ^ (1/3) ~ .)
+summary(m4_t)
+```  
+  
+  
+Os modelos transformados não consideram as observações que tiveram problemas na análise de diagnóstico. Na escolha do modelo com 5 variáveis, foi excluída a variável que apresentava o maior p-valor com base na função *summary(m6_t)* (Avaliacao), do mesmo modo, para o modelo com 4 variáveis foi excluída a que apresentava o maior p-valor baseado na função *summary(m5_t)* (Dias). Em todos os modelos a transformação de Box-Cox indicada foi a raiz cúbica.  
+  
+  
+```{r seleção do modelo}
+n <- 334
+# Coeficiente de determinação ajustado m6_t (6 preditoras)
+summary(m6_t)
+p <- 6
+R2 <- 0.5625
+R2_Aj <- 1 - ((n - 1) / (n - p)) * (1 - R2) ; R2_Aj
+# Coeficiente de determinação ajustado m5_t (5 preditoras)
+summary(m5_t)
+p <- 5
+R2 <- 0.5625
+R2_Aj <- 1 - ((n - 1) / (n - p)) * (1 - R2) ; R2_Aj
+# Coeficiente de determinação ajustado m4_t (4 preditoras)
+summary(m4_t)
+p <- 4
+R2 <- 0.5613
+R2_Aj <- 1 - ((n - 1) / (n - p)) * (1 - R2) ; R2_Aj
+```  
+  
+  
+O critério utilizado para a seleção de covariáveis do modelo é o coeficiente de determinação ajustado, que analisa qual é a quantidade de covariáveis indicada para o modelo.  
+O valor do R^2^~Aj~ para os três casos foi muito próximo, porém optou-se por considerar o maior deles. Sendo assim, o modelo selecionado é m4_t que possui 4 covariáveis.  
+  
+  
+```{r Gráficos modelo selecionado}
+# Gráficos m4_t
+par(mfrow = c(2, 2))
+plot(m4_t)
+layout(1)
+qqPlot(m4_t)
+```
+  
+#### Interpretação
+
+**Parâmetros do modelo:**
+ 
+```{r summary modelo selecionado}
+summary(m4p)
+```
+ 
+Interpretação dos parâmetros do modelo:
+
+Quando o número de páginas aumenta uma unidade, o preço do livro aumenta R$0,37 em média.
+ 
+Livros cujo o idioma é português são em média R$187,19 mais baratos do que livros publicados em inglês.
+ 
+Livros produzidos em capa dura são em média R$87,85 mais caros do que livros de capa comum.
+ 
+O aumento do número de avaliações do livro em uma unidade, diminui o seu preço em R$0,11 em média.
+   
+Quanto ao coeficiente de determinação do modelo ser 0,507, isso significa que apesar das quatro covariáveis terem relação com o preço dos livros, existem outras variáveis a qual não tivemos acesso que também influenciam no valor final do produto.
+
+**Estimativas do modelo:**
+ 
+$E(Y|x) = \beta_0 + \beta_1x_1 + \beta_2x_2$
+ 
+$E(Y|x) = (\beta_0 + \beta_3) + \beta_1x_1 + \beta_2x_2$
+ 
+$E(Y|x) = (\beta_0 + \beta_4) + \beta_1x_1 + \beta_2x_2$
+ 
+$E(Y|x) = (\beta_0 +  \beta_3 + \beta_4) + \beta_1x_1 + \beta_2x_2$
+ 
+Considerando $\beta_0$ o intercepto, $\beta_1$ o número de avaliações no site da Amazon, $\beta_2$ o número de páginas, $\beta_3$ o idioma em que o livro foi publicado e $\beta_4$ tipo de capa que o livro possui.
+ 
+As estimativas do modelo foram consideradas a partir da combinação das covariáveis categóricas, portanto o o preço de livros de ciência de dados e estatística são estimados pelo modelo da seguinte maneira:
+ 
+$E(Y|x) = 133.85 - 0.11 x_1 + 0.37 x_2$, se o idioma é inglês e a capa é comum.
+ 
+$E(Y|x) = (133.85 - 187.19) - 0.11x_1 + 0.37 x_2$, se o idioma é português e a capa é comum.
+ 
+$E(Y|x) = (133.85 + 89.85) - 0.11x_1 + 0.37 x_2$, se o idioma é inglês e a capa é dura.
+ 
+$E(Y|x) = (133.85 - 187.19 + 89.85) - 0.11x_1 + 0.37 x_2$, se o idioma é português e a capa é dura.
+
+
+  
+## Conclusão
+
+Feita a análise dos dados, chegamos a um modelo com 4 parâmetros e um coeficiente de determinação de 0,507. Significando que nós não tivemos acesso a outras informações que poderiam contribuir para o valor do preço.
+
+As covariáveis significativas do nosso modelo são as nossas duas categóricas, *Idioma* e *TipoLivro*, e as duas númericas *nAvaliação* e *Paginas*. Logo, as hipóteses levantadas na introdução não foram rejeitadas. 
+
+Concluímos está análise com uma sugestão de estudo futuro, que seria a coleta de mais dados do site com o objetivo de identificar quais outras variáveis interferem no preço dos livros.
+
+
+
