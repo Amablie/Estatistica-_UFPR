@@ -1,1 +1,3 @@
-# Estatistica-_UFPR
+# Estatistica  UFPR
+
+Alguns trabalhos feitos durante a graduação
